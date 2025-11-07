@@ -16,6 +16,10 @@ const MAX_USES_20_SECONDS = 2;
 
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
 const INVITE_LINK = process.env.INVITE_LINK || 'https://discord.gg/yourserver';
+const EAS_API_KEY = process.env.EAS_API_KEY || 'YOUR_EAS_API_KEY_HERE';
+
+const RED_LOADING_EMOJI = process.env.RED_LOADING_EMOJI || '<a:red_loading:1234567890>';
+const VERIFIED_RED_EMOJI = process.env.VERIFIED_RED_EMOJI || '<:verifiedred:1234567890>';
 
 const API_CONFIGS = {
     aceBypass: {
@@ -51,7 +55,7 @@ const API_CONFIGS = {
                 url: url
             }, {
                 headers: {
-                    'eas-api-key': 'YOUR_EAS_API_KEY_HERE',
+                    'eas-api-key': EAS_API_KEY,
                     'Content-Type': 'application/json'
                 },
                 timeout: 30000
@@ -100,36 +104,53 @@ function checkRateLimit(userId) {
 async function bypassUrl(url) {
     const startTime = Date.now();
     
-    const apiCalls = Object.entries(API_CONFIGS).map(([key, config]) => {
-        return config.call(url)
-            .then(result => ({
-                success: true,
-                apiName: config.name,
-                result: result,
-                time: Date.now() - startTime
-            }))
-            .catch(error => ({
-                success: false,
-                apiName: config.name,
-                error: error.message,
-                time: Date.now() - startTime
-            }));
+    return new Promise((resolve) => {
+        let resolved = false;
+        let completedCount = 0;
+        const totalApis = Object.keys(API_CONFIGS).length;
+        const failedResults = [];
+        
+        Object.entries(API_CONFIGS).forEach(([key, config]) => {
+            config.call(url)
+                .then(result => {
+                    if (!resolved) {
+                        resolved = true;
+                        resolve({
+                            success: true,
+                            apiName: config.name,
+                            result: result,
+                            time: Date.now() - startTime
+                        });
+                    }
+                })
+                .catch(error => {
+                    completedCount++;
+                    failedResults.push({
+                        apiName: config.name,
+                        error: error.message,
+                        time: Date.now() - startTime
+                    });
+                    
+                    if (completedCount === totalApis && !resolved) {
+                        resolved = true;
+                        
+                        const notSupportedError = failedResults.find(f => 
+                            f.error && (f.error.toLowerCase().includes('not supported') || 
+                            f.error.toLowerCase().includes('unsupported'))
+                        );
+                        
+                        const errorToReturn = notSupportedError || failedResults[0];
+                        
+                        resolve({
+                            success: false,
+                            apiName: errorToReturn.apiName,
+                            error: errorToReturn.error || 'All APIs failed',
+                            time: errorToReturn.time
+                        });
+                    }
+                });
+        });
     });
-    
-    const results = await Promise.all(apiCalls);
-    
-    const successfulResult = results.find(r => r.success);
-    
-    if (successfulResult) {
-        return successfulResult;
-    }
-    
-    return {
-        success: false,
-        apiName: 'All APIs',
-        error: 'All APIs failed',
-        time: Date.now() - startTime
-    };
 }
 
 function extractBypassedUrl(apiResult, apiName) {
@@ -203,7 +224,7 @@ client.on('interactionCreate', async (interaction) => {
             
             const loadingEmbed = new EmbedBuilder()
                 .setColor('#FF0000')
-                .setDescription('🔴 Processing your bypass request...')
+                .setDescription(`${RED_LOADING_EMOJI} Processing your bypass request...`)
                 .setTimestamp();
             
             await interaction.reply({ embeds: [loadingEmbed] });
@@ -219,7 +240,7 @@ client.on('interactionCreate', async (interaction) => {
                     
                     resultEmbed = new EmbedBuilder()
                         .setColor('#00FF00')
-                        .setTitle('✅ Bypass Successful')
+                        .setTitle(`${VERIFIED_RED_EMOJI} Bypass Successful`)
                         .setDescription(`**Result:** \`${bypassedUrl}\``)
                         .addFields(
                             { name: 'API Used', value: result.apiName, inline: true },

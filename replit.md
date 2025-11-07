@@ -37,8 +37,15 @@ discord-bypasser-bot/
 
 ## Configuration Required
 1. **DISCORD_TOKEN**: Your Discord bot token (required)
-2. **EAS_API_KEY**: Your EAS-X API key (needs to be added to index.js)
+2. **EAS_API_KEY**: Your EAS-X API key (optional, if not using EAS-X API)
 3. **INVITE_LINK**: Your Discord server invite link (optional, defaults to placeholder)
+4. **RED_LOADING_EMOJI**: Custom emoji for loading state (optional, format: `<a:red_loading:emoji_id>`)
+5. **VERIFIED_RED_EMOJI**: Custom emoji for success state (optional, format: `<:verifiedred:emoji_id>`)
+
+### How to Get Custom Emoji IDs:
+1. In Discord, type `\:emoji_name:` to get the full emoji code with ID
+2. Copy the emoji ID from the format `<:emoji_name:123456789>`
+3. Add as environment variables or update the defaults in index.js
 
 ## API Keys (Hardcoded as per requirements)
 - Ace Bypass: `h3vbEwBwyvvUybAP2012Cg`
