@@ -9,6 +9,7 @@ const client = new Client({
 });
 
 const rateLimits = new Map();
+const bypassedUrls = new Map();
 const RATE_LIMIT_5_HOURS = 5 * 60 * 60 * 1000;
 const RATE_LIMIT_20_SECONDS = 20 * 1000;
 const MAX_USES_5_HOURS = 5;
@@ -238,6 +239,9 @@ client.on('interactionCreate', async (interaction) => {
                 if (result.success) {
                     const bypassedUrl = extractBypassedUrl(result.result, result.apiName);
                     
+                    const urlId = `${userId}_${Date.now()}`;
+                    bypassedUrls.set(urlId, bypassedUrl);
+                    
                     resultEmbed = new EmbedBuilder()
                         .setColor('#00FF00')
                         .setTitle(`${VERIFIED_RED_EMOJI} Bypass Successful`)
@@ -254,7 +258,7 @@ client.on('interactionCreate', async (interaction) => {
                             .setStyle(ButtonStyle.Link)
                             .setURL(INVITE_LINK),
                         new ButtonBuilder()
-                            .setCustomId(`copy_${bypassedUrl}`)
+                            .setCustomId(`copy_${urlId}`)
                             .setLabel('Copy')
                             .setStyle(ButtonStyle.Primary)
                     );
@@ -285,7 +289,10 @@ client.on('interactionCreate', async (interaction) => {
                 });
                 
             } catch (error) {
-                console.error('Error during bypass:', error);
+                console.error('Error during bypass:');
+                console.error('Error message:', error.message);
+                console.error('Error stack:', error.stack);
+                console.error('Full error:', error);
                 
                 const errorEmbed = new EmbedBuilder()
                     .setColor('#FF0000')
@@ -298,12 +305,20 @@ client.on('interactionCreate', async (interaction) => {
         }
     } else if (interaction.isButton()) {
         if (interaction.customId.startsWith('copy_')) {
-            const url = interaction.customId.replace('copy_', '');
+            const urlId = interaction.customId.replace('copy_', '');
+            const url = bypassedUrls.get(urlId);
             
-            await interaction.reply({
-                content: url,
-                ephemeral: true
-            });
+            if (url) {
+                await interaction.reply({
+                    content: url,
+                    ephemeral: true
+                });
+            } else {
+                await interaction.reply({
+                    content: 'This link has expired. Please run /bypass again.',
+                    ephemeral: true
+                });
+            }
         }
     }
 });
