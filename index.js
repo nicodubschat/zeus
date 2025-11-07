@@ -16,10 +16,10 @@ const MAX_USES_20_SECONDS = 2;
 
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
 const INVITE_LINK = process.env.INVITE_LINK || 'https://discord.gg/yourserver';
-const EAS_API_KEY = process.env.EAS_API_KEY || 'YOUR_EAS_API_KEY_HERE';
+const EAS_API_KEY = process.env.EAS_API_KEY || 'z0vl-33532-232f2-a13242-f4543';
 
-const RED_LOADING_EMOJI = process.env.RED_LOADING_EMOJI || '<a:red_loading:1234567890>';
-const VERIFIED_RED_EMOJI = process.env.VERIFIED_RED_EMOJI || '<:verifiedred:1234567890>';
+const RED_LOADING_EMOJI = process.env.RED_LOADING_EMOJI || '<a:red_loading:1436149376841154571>';
+const VERIFIED_RED_EMOJI = process.env.VERIFIED_RED_EMOJI || '<a:verifiedred:1436149172603715624>';
 
 const API_CONFIGS = {
     aceBypass: {
