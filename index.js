@@ -12,10 +12,10 @@ const client = new Client({
 const rateLimits = new Map();
 const bypassedUrls = new Map();
 const autoBypassChannels = new Map();
-const RATE_LIMIT_5_HOURS = 5 * 60 * 60 * 1000;
-const RATE_LIMIT_20_SECONDS = 20 * 1000;
-const MAX_USES_5_HOURS = 5;
-const MAX_USES_20_SECONDS = 2;
+const RATE_LIMIT_11_HOURS = 11 * 60 * 60 * 1000;
+const RATE_LIMIT_25_SECONDS = 25 * 1000;
+const MAX_USES_11_HOURS = 5;
+const MAX_USES_25_SECONDS = 1;
 
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
 const INVITE_LINK = process.env.INVITE_LINK || 'https://discord.gg/zeus';
@@ -73,33 +73,33 @@ function checkRateLimit(userId) {
     
     if (!rateLimits.has(userId)) {
         rateLimits.set(userId, {
-            uses5Hours: [],
-            uses20Seconds: []
+            uses11Hours: [],
+            uses25Seconds: []
         });
     }
     
     const userLimits = rateLimits.get(userId);
     
-    userLimits.uses5Hours = userLimits.uses5Hours.filter(time => now - time < RATE_LIMIT_5_HOURS);
-    userLimits.uses20Seconds = userLimits.uses20Seconds.filter(time => now - time < RATE_LIMIT_20_SECONDS);
+    userLimits.uses11Hours = userLimits.uses11Hours.filter(time => now - time < RATE_LIMIT_11_HOURS);
+    userLimits.uses25Seconds = userLimits.uses25Seconds.filter(time => now - time < RATE_LIMIT_25_SECONDS);
     
-    if (userLimits.uses5Hours.length >= MAX_USES_5_HOURS) {
-        const oldestUse = userLimits.uses5Hours[0];
-        const timeLeft = RATE_LIMIT_5_HOURS - (now - oldestUse);
+    if (userLimits.uses11Hours.length >= MAX_USES_11_HOURS) {
+        const oldestUse = userLimits.uses11Hours[0];
+        const timeLeft = RATE_LIMIT_11_HOURS - (now - oldestUse);
         const hoursLeft = Math.floor(timeLeft / (60 * 60 * 1000));
         const minutesLeft = Math.floor((timeLeft % (60 * 60 * 1000)) / (60 * 1000));
-        return { allowed: false, message: `Rate limit exceeded! You've used 5 bypasses in the last 5 hours. Try again in ${hoursLeft}h ${minutesLeft}m.` };
+        return { allowed: false, message: `⚠️ **Max limit reached!** You've used 5 bypasses in the last 11 hours. Please wait ${hoursLeft}h ${minutesLeft}m before trying again.` };
     }
     
-    if (userLimits.uses20Seconds.length >= MAX_USES_20_SECONDS) {
-        const oldestUse = userLimits.uses20Seconds[0];
-        const timeLeft = RATE_LIMIT_20_SECONDS - (now - oldestUse);
+    if (userLimits.uses25Seconds.length >= MAX_USES_25_SECONDS) {
+        const oldestUse = userLimits.uses25Seconds[0];
+        const timeLeft = RATE_LIMIT_25_SECONDS - (now - oldestUse);
         const secondsLeft = Math.ceil(timeLeft / 1000);
-        return { allowed: false, message: `Slow down! You can only use 2 bypasses per 20 seconds. Try again in ${secondsLeft}s.` };
+        return { allowed: false, message: `⏳ **Please wait!** You can only use 1 bypass every 25 seconds. Try again in ${secondsLeft} seconds.` };
     }
     
-    userLimits.uses5Hours.push(now);
-    userLimits.uses20Seconds.push(now);
+    userLimits.uses11Hours.push(now);
+    userLimits.uses25Seconds.push(now);
     
     return { allowed: true };
 }
@@ -340,6 +340,116 @@ client.on('interactionCreate', async (interaction) => {
                     ephemeral: true
                 });
             }
+        }
+    }
+});
+
+client.on('messageCreate', async (message) => {
+    if (message.author.bot) return;
+    
+    const channelId = message.channelId;
+    
+    if (autoBypassChannels.has(channelId)) {
+        try {
+            await message.delete();
+        } catch (error) {
+            console.error('Error deleting message:', error);
+        }
+        
+        const urls = extractUrls(message.content);
+        
+        if (urls.length === 0) {
+            return;
+        }
+        
+        const userId = message.author.id;
+        
+        const rateLimitCheck = checkRateLimit(userId);
+        if (!rateLimitCheck.allowed) {
+            const rateLimitMsg = await message.channel.send(rateLimitCheck.message);
+            setTimeout(() => {
+                rateLimitMsg.delete().catch(console.error);
+            }, 10000);
+            return;
+        }
+        
+        const url = urls[0];
+        
+        const loadingEmbed = new EmbedBuilder()
+            .setColor('#FF0000')
+            .setDescription(`${RED_LOADING_EMOJI} Processing bypass for <@${userId}>...`)
+            .setTimestamp();
+        
+        const loadingMessage = await message.channel.send({ embeds: [loadingEmbed] });
+        
+        try {
+            const result = await bypassUrl(url);
+            
+            let resultEmbed;
+            const buttons = new ActionRowBuilder();
+            
+            if (result.success) {
+                const bypassedUrl = extractBypassedUrl(result.result, result.apiName);
+                
+                const urlId = `${userId}_${Date.now()}`;
+                bypassedUrls.set(urlId, bypassedUrl);
+                
+                resultEmbed = new EmbedBuilder()
+                    .setColor('#00FF00')
+                    .setTitle(`${VERIFIED_RED_EMOJI} Bypass Successful`)
+                    .setDescription(`**Result:** \`${bypassedUrl}\`\n**Requested by:** <@${userId}>`)
+                    .addFields(
+                        { name: 'API Used', value: result.apiName, inline: true },
+                        { name: 'Time Taken', value: formatTime(result.time), inline: true }
+                    )
+                    .setTimestamp();
+                
+                buttons.addComponents(
+                    new ButtonBuilder()
+                        .setLabel('Join Server')
+                        .setStyle(ButtonStyle.Link)
+                        .setURL(INVITE_LINK),
+                    new ButtonBuilder()
+                        .setCustomId(`copy_${urlId}`)
+                        .setLabel('Copy')
+                        .setStyle(ButtonStyle.Primary)
+                );
+            } else {
+                const errorMsg = normalizeErrorMessage(result.error);
+                
+                resultEmbed = new EmbedBuilder()
+                    .setColor('#FF0000')
+                    .setTitle('❌ Bypass Failed')
+                    .setDescription(`**Result:** ${errorMsg}\n**Requested by:** <@${userId}>`)
+                    .addFields(
+                        { name: 'API Used', value: result.apiName, inline: true },
+                        { name: 'Time Taken', value: formatTime(result.time), inline: true }
+                    )
+                    .setTimestamp();
+                
+                buttons.addComponents(
+                    new ButtonBuilder()
+                        .setLabel('Join Server')
+                        .setStyle(ButtonStyle.Link)
+                        .setURL(INVITE_LINK)
+                );
+            }
+            
+            await loadingMessage.edit({
+                embeds: [resultEmbed],
+                components: [buttons]
+            });
+            
+        } catch (error) {
+            console.error('Error during auto-bypass:', error);
+            
+            const errorEmbed = new EmbedBuilder()
+                .setColor('#FF0000')
+                .setTitle('❌ Error')
+                .setDescription('An unexpected error occurred while processing your request.')
+                .setTimestamp();
+            
+            await loadingMessage.edit({ embeds: [errorEmbed] });
         }
     }
 });
