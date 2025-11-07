@@ -16,7 +16,7 @@ const MAX_USES_5_HOURS = 5;
 const MAX_USES_20_SECONDS = 2;
 
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
-const INVITE_LINK = process.env.INVITE_LINK || 'https://discord.gg/yourserver';
+const INVITE_LINK = process.env.INVITE_LINK || 'https://discord.gg/zeus';
 const EAS_API_KEY = process.env.EAS_API_KEY || 'z0vl-33532-232f2-a13242-f4543';
 
 const RED_LOADING_EMOJI = process.env.RED_LOADING_EMOJI || '<a:red_loading:1436149376841154571>';
@@ -105,53 +105,33 @@ function checkRateLimit(userId) {
 async function bypassUrl(url) {
     const startTime = Date.now();
     
-    return new Promise((resolve) => {
-        let resolved = false;
-        let completedCount = 0;
-        const totalApis = Object.keys(API_CONFIGS).length;
-        const failedResults = [];
-        
-        Object.entries(API_CONFIGS).forEach(([key, config]) => {
-            config.call(url)
-                .then(result => {
-                    if (!resolved) {
-                        resolved = true;
-                        resolve({
-                            success: true,
-                            apiName: config.name,
-                            result: result,
-                            time: Date.now() - startTime
-                        });
-                    }
-                })
-                .catch(error => {
-                    completedCount++;
-                    failedResults.push({
-                        apiName: config.name,
-                        error: error.message,
-                        time: Date.now() - startTime
-                    });
-                    
-                    if (completedCount === totalApis && !resolved) {
-                        resolved = true;
-                        
-                        const notSupportedError = failedResults.find(f => 
-                            f.error && (f.error.toLowerCase().includes('not supported') || 
-                            f.error.toLowerCase().includes('unsupported'))
-                        );
-                        
-                        const errorToReturn = notSupportedError || failedResults[0];
-                        
-                        resolve({
-                            success: false,
-                            apiName: errorToReturn.apiName,
-                            error: errorToReturn.error || 'All APIs failed',
-                            time: errorToReturn.time
-                        });
-                    }
-                });
-        });
-    });
+    const apiOrder = [
+        { key: 'aceBypass', config: API_CONFIGS.aceBypass },
+        { key: 'easX', config: API_CONFIGS.easX },
+        { key: 'bypassVip', config: API_CONFIGS.bypassVip }
+    ];
+    
+    for (const { key, config } of apiOrder) {
+        try {
+            const result = await config.call(url);
+            return {
+                success: true,
+                apiName: config.name,
+                result: result,
+                time: Date.now() - startTime
+            };
+        } catch (error) {
+            console.log(`${config.name} failed:`, error.message);
+            continue;
+        }
+    }
+    
+    return {
+        success: false,
+        apiName: 'All APIs',
+        error: 'All bypass APIs failed. The link may not be supported.',
+        time: Date.now() - startTime
+    };
 }
 
 function extractBypassedUrl(apiResult, apiName) {
@@ -179,6 +159,20 @@ function normalizeErrorMessage(error) {
         return 'Link not supported';
     }
     return error;
+}
+
+function formatTime(milliseconds) {
+    const seconds = Math.floor(milliseconds / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    
+    if (minutes > 0) {
+        return `${minutes}m ${remainingSeconds}s`;
+    } else if (seconds > 0) {
+        return `${seconds}s`;
+    } else {
+        return `${milliseconds}ms`;
+    }
 }
 
 client.once('ready', async () => {
@@ -248,7 +242,7 @@ client.on('interactionCreate', async (interaction) => {
                         .setDescription(`**Result:** \`${bypassedUrl}\``)
                         .addFields(
                             { name: 'API Used', value: result.apiName, inline: true },
-                            { name: 'Time Taken', value: `${result.time}ms`, inline: true }
+                            { name: 'Time Taken', value: formatTime(result.time), inline: true }
                         )
                         .setTimestamp();
                     
@@ -271,7 +265,7 @@ client.on('interactionCreate', async (interaction) => {
                         .setDescription(`**Result:** ${errorMsg}`)
                         .addFields(
                             { name: 'API Used', value: result.apiName, inline: true },
-                            { name: 'Time Taken', value: `${result.time}ms`, inline: true }
+                            { name: 'Time Taken', value: formatTime(result.time), inline: true }
                         )
                         .setTimestamp();
                     
