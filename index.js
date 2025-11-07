@@ -4,12 +4,14 @@ const axios = require('axios');
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildMessages
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent
     ]
 });
 
 const rateLimits = new Map();
 const bypassedUrls = new Map();
+const autoBypassChannels = new Map();
 const RATE_LIMIT_5_HOURS = 5 * 60 * 60 * 1000;
 const RATE_LIMIT_20_SECONDS = 20 * 1000;
 const MAX_USES_5_HOURS = 5;
@@ -175,6 +177,12 @@ function formatTime(milliseconds) {
     }
 }
 
+function extractUrls(text) {
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const matches = text.match(urlRegex);
+    return matches || [];
+}
+
 client.once('ready', async () => {
     console.log(`Logged in as ${client.user.tag}`);
     
@@ -186,7 +194,10 @@ client.once('ready', async () => {
                 option.setName('url')
                     .setDescription('The URL to bypass')
                     .setRequired(true)
-            )
+            ),
+        new SlashCommandBuilder()
+            .setName('autobypass')
+            .setDescription('Toggle automatic bypass mode for this channel')
     ];
     
     const rest = new REST({ version: '10' }).setToken(DISCORD_TOKEN);
@@ -295,6 +306,22 @@ client.on('interactionCreate', async (interaction) => {
                     .setTimestamp();
                 
                 await interaction.editReply({ embeds: [errorEmbed] });
+            }
+        } else if (interaction.commandName === 'autobypass') {
+            const channelId = interaction.channelId;
+            
+            if (autoBypassChannels.has(channelId)) {
+                autoBypassChannels.delete(channelId);
+                await interaction.reply({
+                    content: '✅ Auto-bypass mode has been **disabled** for this channel.',
+                    ephemeral: true
+                });
+            } else {
+                autoBypassChannels.set(channelId, true);
+                await interaction.reply({
+                    content: '✅ Auto-bypass mode has been **enabled** for this channel.\n\n📌 **How it works:**\n- Send any link and it will be automatically bypassed\n- All user messages (links or not) will be deleted\n- Only bot bypass results will remain in the channel',
+                    ephemeral: true
+                });
             }
         }
     } else if (interaction.isButton()) {
