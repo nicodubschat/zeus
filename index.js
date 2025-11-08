@@ -18,10 +18,11 @@ const RATE_LIMIT_25_SECONDS = 25 * 1000;
 const MAX_USES_11_HOURS = 5;
 const MAX_USES_25_SECONDS = 1;
 let botStartTime = Date.now();
+let totalBypassCount = 0;
 
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
 const INVITE_LINK = process.env.INVITE_LINK || 'https://discord.gg/zeus';
-const EAS_API_KEY = process.env.EAS_API_KEY || 'z0vl-33532-232f2-a13242-f4543';
+const EAS_API_KEY = process.env.EAS_API_KEY;
 
 const RED_LOADING_EMOJI = process.env.RED_LOADING_EMOJI || '<a:red_loading:1436149376841154571>';
 const VERIFIED_RED_EMOJI = process.env.VERIFIED_RED_EMOJI || '<a:verifiedred:1436149172603715624>';
@@ -150,6 +151,7 @@ function checkRateLimit(userId) {
 
 async function bypassUrl(url) {
     const startTime = Date.now();
+    totalBypassCount++;
     
     const apiOrder = [
         { key: 'aceBypass', config: API_CONFIGS.aceBypass },
@@ -254,7 +256,10 @@ client.once('ready', async () => {
             .setDescription('Send a bypass panel in this channel'),
         new SlashCommandBuilder()
             .setName('supported')
-            .setDescription('View all supported bypass services')
+            .setDescription('View all supported bypass services'),
+        new SlashCommandBuilder()
+            .setName('info')
+            .setDescription('View bot statistics')
     ];
     
     const rest = new REST({ version: '10' }).setToken(DISCORD_TOKEN);
@@ -476,6 +481,19 @@ client.on('interactionCreate', async (interaction) => {
                 .setTimestamp();
             
             await interaction.reply({ embeds: [supportedEmbed], ephemeral: true });
+        } else if (interaction.commandName === 'info') {
+            const serverCount = client.guilds.cache.size;
+            
+            const infoEmbed = new EmbedBuilder()
+                .setColor('#FF0000')
+                .setTitle('📊 Bot Statistics')
+                .addFields(
+                    { name: '🌐 Server Count', value: `${serverCount}`, inline: true },
+                    { name: '🔗 Total Bypasses', value: `${totalBypassCount}`, inline: true }
+                )
+                .setTimestamp();
+            
+            await interaction.reply({ embeds: [infoEmbed] });
         }
     } else if (interaction.isButton()) {
         if (interaction.customId.startsWith('copy_')) {
