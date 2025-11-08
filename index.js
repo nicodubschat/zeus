@@ -1,4 +1,4 @@
-const { Client, GatewayIntentBits, SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, REST, Routes } = require('discord.js');
+const { Client, GatewayIntentBits, SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, REST, Routes, ModalBuilder, TextInputBuilder, TextInputStyle } = require('discord.js');
 const axios = require('axios');
 
 const client = new Client({
@@ -12,10 +12,12 @@ const client = new Client({
 const rateLimits = new Map();
 const bypassedUrls = new Map();
 const autoBypassChannels = new Map();
+const pendingBypassRequests = new Map();
 const RATE_LIMIT_11_HOURS = 11 * 60 * 60 * 1000;
 const RATE_LIMIT_25_SECONDS = 25 * 1000;
 const MAX_USES_11_HOURS = 5;
 const MAX_USES_25_SECONDS = 1;
+let botStartTime = Date.now();
 
 const DISCORD_TOKEN = process.env.DISCORD_TOKEN;
 const INVITE_LINK = process.env.INVITE_LINK || 'https://discord.gg/zeus';
@@ -23,6 +25,48 @@ const EAS_API_KEY = process.env.EAS_API_KEY || 'z0vl-33532-232f2-a13242-f4543';
 
 const RED_LOADING_EMOJI = process.env.RED_LOADING_EMOJI || '<a:red_loading:1436149376841154571>';
 const VERIFIED_RED_EMOJI = process.env.VERIFIED_RED_EMOJI || '<a:verifiedred:1436149172603715624>';
+
+const SUPPORTED_BYPASSES = [
+    "Delta", "Krnl", "Pandadev", "Codex", "Trigon", "bit.do", "bit.ly", "blox-script",
+    "boost-ink-and-bst-gg", "bstshrt", "cl.gy", "cuttlinks", "cuty-cuttlinks", "getpolsec",
+    "goo.gl", "is.gd", "keyguardian", "ldnesfspublic", "link-hub.net", "link-unlock-complete",
+    "link4m.com", "link4sub", "linkunlocker", "linkvertise", "lockr", "loot-links", "mboost",
+    "mediafire", "nicuse-getkey", "overdrivehub", "paste-drop", "pastebin", "paster-so",
+    "pastes_io", "quartyz", "rebrand.ly", "rekonise", "rinku-pro", "rkns.link",
+    "shorteners-and-direct", "shorter.me", "socialwolvez", "sub2get", "sub2unlock",
+    "sub4unlock.com", "subfinal", "t.co", "t.ly", "tiny.cc", "tinylink.onl", "tinyurl.com",
+    "tpi.li key-system", "v.gd", "work-ink", "ytsubme"
+];
+
+function formatElapsedTime(startTime) {
+    const elapsed = Date.now() - startTime;
+    const seconds = Math.floor(elapsed / 1000);
+    const minutes = Math.floor(seconds / 60);
+    const hours = Math.floor(minutes / 60);
+    const days = Math.floor(hours / 24);
+    
+    if (days > 0) {
+        return `${days}d ${hours % 24}h ${minutes % 60}m`;
+    } else if (hours > 0) {
+        return `${hours}h ${minutes % 60}m`;
+    } else if (minutes > 0) {
+        return `${minutes}m ${seconds % 60}s`;
+    } else {
+        return `${seconds}s`;
+    }
+}
+
+function updateBotStatus() {
+    const elapsedTime = formatElapsedTime(botStartTime);
+    client.user.setPresence({
+        activities: [{
+            name: `/help | Uptime: ${elapsedTime}`,
+            type: 1,
+            url: 'https://twitch.tv/discord'
+        }],
+        status: 'online'
+    });
+}
 
 const API_CONFIGS = {
     aceBypass: {
@@ -185,6 +229,10 @@ function extractUrls(text) {
 
 client.once('ready', async () => {
     console.log(`Logged in as ${client.user.tag}`);
+    botStartTime = Date.now();
+    
+    updateBotStatus();
+    setInterval(updateBotStatus, 30000);
     
     const commands = [
         new SlashCommandBuilder()
@@ -197,7 +245,16 @@ client.once('ready', async () => {
             ),
         new SlashCommandBuilder()
             .setName('autobypass')
-            .setDescription('Toggle automatic bypass mode for this channel')
+            .setDescription('Toggle automatic bypass mode for this channel'),
+        new SlashCommandBuilder()
+            .setName('help')
+            .setDescription('Learn how to use the bypass bot'),
+        new SlashCommandBuilder()
+            .setName('panel')
+            .setDescription('Send a bypass panel in this channel'),
+        new SlashCommandBuilder()
+            .setName('supported')
+            .setDescription('View all supported bypass services')
     ];
     
     const rest = new REST({ version: '10' }).setToken(DISCORD_TOKEN);
@@ -323,6 +380,102 @@ client.on('interactionCreate', async (interaction) => {
                     ephemeral: true
                 });
             }
+        } else if (interaction.commandName === 'help') {
+            const helpEmbed = new EmbedBuilder()
+                .setColor('#0099FF')
+                .setTitle('📖 Bypass Bot - Help Guide')
+                .setDescription('Learn how to use the bypass bot to bypass various URL shorteners and key systems.')
+                .addFields(
+                    { 
+                        name: '🔗 /bypass <url>', 
+                        value: 'Bypass a single URL. The bot will attempt to bypass the link using multiple APIs.\n**Example:** `/bypass https://example.com/shortened-link`' 
+                    },
+                    { 
+                        name: '🤖 /autobypass', 
+                        value: 'Toggle auto-bypass mode in the current channel. When enabled, any message with a link will be automatically bypassed and deleted.\n**Note:** All messages in this channel will be deleted automatically.' 
+                    },
+                    { 
+                        name: '📋 /panel', 
+                        value: 'Send a bypass panel in the channel. Click the "Bypass Link" button to submit your link for bypassing.' 
+                    },
+                    { 
+                        name: '📜 /supported', 
+                        value: 'View a list of all supported bypass services and shorteners.' 
+                    },
+                    { 
+                        name: '⚠️ Rate Limits', 
+                        value: '• **5 bypasses** every **11 hours**\n• **1 bypass** every **25 seconds**' 
+                    }
+                )
+                .setFooter({ text: 'Need more help? Join our server!' })
+                .setTimestamp();
+            
+            const helpButton = new ActionRowBuilder()
+                .addComponents(
+                    new ButtonBuilder()
+                        .setLabel('Join Server')
+                        .setStyle(ButtonStyle.Link)
+                        .setURL(INVITE_LINK)
+                );
+            
+            await interaction.reply({ embeds: [helpEmbed], components: [helpButton], ephemeral: true });
+            
+        } else if (interaction.commandName === 'panel') {
+            const panelEmbed = new EmbedBuilder()
+                .setColor('#FF0000')
+                .setTitle('🔓 Bypass Panel')
+                .setDescription('Click the button below to bypass your link!')
+                .setTimestamp();
+            
+            const panelButton = new ActionRowBuilder()
+                .addComponents(
+                    new ButtonBuilder()
+                        .setCustomId('bypass_panel_button')
+                        .setLabel('Bypass Link')
+                        .setStyle(ButtonStyle.Success)
+                        .setEmoji('🔗')
+                );
+            
+            await interaction.reply({ embeds: [panelEmbed], components: [panelButton] });
+            
+        } else if (interaction.commandName === 'supported') {
+            const column1 = SUPPORTED_BYPASSES.slice(0, 20);
+            const column2 = SUPPORTED_BYPASSES.slice(20, 40);
+            const column3 = SUPPORTED_BYPASSES.slice(40);
+            
+            const fields = [
+                { 
+                    name: '📌 Services 1-20', 
+                    value: column1.map((service, i) => `\`${i + 1}.\` ${service}`).join('\n'), 
+                    inline: false 
+                }
+            ];
+            
+            if (column2.length > 0) {
+                fields.push({ 
+                    name: '📌 Services 21-40', 
+                    value: column2.map((service, i) => `\`${i + 21}.\` ${service}`).join('\n'), 
+                    inline: false 
+                });
+            }
+            
+            if (column3.length > 0) {
+                fields.push({ 
+                    name: `📌 Services 41-${SUPPORTED_BYPASSES.length}`, 
+                    value: column3.map((service, i) => `\`${i + 41}.\` ${service}`).join('\n'), 
+                    inline: false 
+                });
+            }
+            
+            const supportedEmbed = new EmbedBuilder()
+                .setColor('#00FF00')
+                .setTitle('✅ Supported Bypass Services')
+                .setDescription(`**Total Services:** ${SUPPORTED_BYPASSES.length}\n\nOur bot supports bypassing the following services:`)
+                .addFields(fields)
+                .setFooter({ text: 'These services are supported by our bypass APIs' })
+                .setTimestamp();
+            
+            await interaction.reply({ embeds: [supportedEmbed], ephemeral: true });
         }
     } else if (interaction.isButton()) {
         if (interaction.customId.startsWith('copy_')) {
@@ -339,6 +492,112 @@ client.on('interactionCreate', async (interaction) => {
                     content: 'This link has expired. Please run /bypass again.',
                     ephemeral: true
                 });
+            }
+        } else if (interaction.customId === 'bypass_panel_button') {
+            const modal = new ModalBuilder()
+                .setCustomId('bypass_modal')
+                .setTitle('🔓 Bypass Your Link');
+            
+            const urlInput = new TextInputBuilder()
+                .setCustomId('bypass_url_input')
+                .setLabel('Enter the URL to bypass')
+                .setPlaceholder('https://example.com/your-link')
+                .setStyle(TextInputStyle.Short)
+                .setRequired(true);
+            
+            const actionRow = new ActionRowBuilder().addComponents(urlInput);
+            modal.addComponents(actionRow);
+            
+            await interaction.showModal(modal);
+        }
+    } else if (interaction.isModalSubmit()) {
+        if (interaction.customId === 'bypass_modal') {
+            const url = interaction.fields.getTextInputValue('bypass_url_input');
+            const userId = interaction.user.id;
+            
+            const rateLimitCheck = checkRateLimit(userId);
+            if (!rateLimitCheck.allowed) {
+                return interaction.reply({
+                    content: rateLimitCheck.message,
+                    ephemeral: true
+                });
+            }
+            
+            const loadingEmbed = new EmbedBuilder()
+                .setColor('#FF0000')
+                .setDescription(`${RED_LOADING_EMOJI} Processing your bypass request...`)
+                .setTimestamp();
+            
+            await interaction.reply({ embeds: [loadingEmbed] });
+            
+            try {
+                const result = await bypassUrl(url);
+                
+                let resultEmbed;
+                const buttons = new ActionRowBuilder();
+                
+                if (result.success) {
+                    const bypassedUrl = extractBypassedUrl(result.result, result.apiName);
+                    
+                    const urlId = `${userId}_${Date.now()}`;
+                    bypassedUrls.set(urlId, bypassedUrl);
+                    
+                    resultEmbed = new EmbedBuilder()
+                        .setColor('#00FF00')
+                        .setTitle(`${VERIFIED_RED_EMOJI} Bypass Successful`)
+                        .setDescription(`**Result:** \`${bypassedUrl}\``)
+                        .addFields(
+                            { name: 'API Used', value: result.apiName, inline: true },
+                            { name: 'Time Taken', value: formatTime(result.time), inline: true }
+                        )
+                        .setTimestamp();
+                    
+                    buttons.addComponents(
+                        new ButtonBuilder()
+                            .setLabel('Join Server')
+                            .setStyle(ButtonStyle.Link)
+                            .setURL(INVITE_LINK),
+                        new ButtonBuilder()
+                            .setCustomId(`copy_${urlId}`)
+                            .setLabel('Copy')
+                            .setStyle(ButtonStyle.Primary)
+                    );
+                } else {
+                    const errorMsg = normalizeErrorMessage(result.error);
+                    
+                    resultEmbed = new EmbedBuilder()
+                        .setColor('#FF0000')
+                        .setTitle('❌ Bypass Failed')
+                        .setDescription(`**Result:** ${errorMsg}`)
+                        .addFields(
+                            { name: 'API Used', value: result.apiName, inline: true },
+                            { name: 'Time Taken', value: formatTime(result.time), inline: true }
+                        )
+                        .setTimestamp();
+                    
+                    buttons.addComponents(
+                        new ButtonBuilder()
+                            .setLabel('Join Server')
+                            .setStyle(ButtonStyle.Link)
+                            .setURL(INVITE_LINK)
+                    );
+                }
+                
+                await interaction.editReply({
+                    embeds: [resultEmbed],
+                    components: [buttons]
+                });
+                
+            } catch (error) {
+                console.error('Error during panel bypass:', error);
+                
+                const errorEmbed = new EmbedBuilder()
+                    .setColor('#FF0000')
+                    .setTitle('❌ Error')
+                    .setDescription('An unexpected error occurred while processing your request.')
+                    .setTimestamp();
+                
+                await interaction.editReply({ embeds: [errorEmbed] });
             }
         }
     }
